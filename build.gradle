@@ -1,0 +1,29 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.4'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.example'
+version = '0.0.1'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    // Web Push 발송 (VAPID 서명 + 페이로드 암호화). BouncyCastle은 전이 의존성으로 들어옴
+    implementation 'nl.martijndwars:web-push:5.1.1'
+
+    // web-push가 런타임 의존성으로만 걸어둔 것들. 우리 코드에서 직접 쓰니까 컴파일용으로 선언
+    implementation 'org.bouncycastle:bcprov-jdk15on:1.70'
+    implementation 'org.apache.httpcomponents:httpasyncclient:4.1.5'
+    implementation 'org.bitbucket.b_c:jose4j:0.7.0'
+}

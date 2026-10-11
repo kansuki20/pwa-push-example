@@ -1,0 +1,10 @@
+server:
+  port: 8080
+
+webpush:
+  vapid:
+    # 처음 실행하면 로그에 키가 찍힘 → 여기 붙여넣기 (운영에선 환경변수로)
+    public-key: BJUlop1UL_dKzwyywSAJxTTns0xsBcDK3v7CY0vvuhyngkWLuSQt4Cw3-LYV3qMMCo6A6N1L7qFBVwX4m29hm-E
+    private-key: h4TnQClZifU4z_6RfNGgb_nzUP1PkaV6IVkxo50nki4
+    # 푸시 서비스(FCM, Apple 등)가 문제 생겼을 때 연락할 주소. mailto: 또는 https:// 형식 필수
+    subject: mailto:admin@example.com

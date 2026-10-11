@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PWA 푸시 예제</title>
+
+  <!-- PWA 설치용 -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#2563eb" />
+  <!-- iOS 홈 화면용 -->
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; }
+    button { display: block; width: 100%; padding: 14px; margin: 10px 0; font-size: 16px;
+             border: 0; border-radius: 10px; background: #2563eb; color: #fff; cursor: pointer; }
+    button.secondary { background: #e5e7eb; color: #111; }
+    button[hidden] { display: none; }
+    #log { background: #f3f4f6; padding: 12px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; min-height: 60px; }
+  </style>
+</head>
+<body>
+  <h1>PWA 푸시 예제</h1>
+
+  <button id="installBtn" hidden>📲 앱 설치</button>
+  <button id="subscribeBtn">🔔 알림 받기</button>
+  <button id="testBtn" class="secondary">테스트 푸시 보내기</button>
+  <button id="unsubscribeBtn" class="secondary">알림 끄기</button>
+
+  <h3>로그</h3>
+  <div id="log"></div>
+
+<script>
+const log = (m) => (document.getElementById('log').textContent += m + '\n');
+
+// ── 1. Service Worker 등록 ─────────────────────────────
+let swReg;
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').then((reg) => {
+    swReg = reg;
+    log('✅ Service Worker 등록됨');
+  });
+} else {
+  log('❌ 이 브라우저는 Service Worker 미지원');
+}
+
+// ── 2. 설치 버튼 (Chrome/Edge/안드로이드만. iOS 는 공유 → 홈 화면에 추가) ──
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBtn').hidden = false;
+});
+document.getElementById('installBtn').onclick = async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  log('설치 선택: ' + outcome);
+  deferredPrompt = null;
+  document.getElementById('installBtn').hidden = true;
+};
+
+// ── 3. 푸시 구독 ──────────────────────────────────────
+// VAPID 공개키(base64url) → Uint8Array 변환
+function urlBase64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const raw = atob((base64 + padding).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+document.getElementById('subscribeBtn').onclick = async () => {
+  if (!('PushManager' in window)) {
+    return log('❌ 푸시 미지원 (iOS 는 홈 화면에 설치한 뒤 거기서 열어야 함)');
+  }
+
+  // 권한 요청은 반드시 사용자 클릭 안에서
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') return log('❌ 알림 권한 거부됨: ' + perm);
+
+  const reg = swReg || (await navigator.serviceWorker.ready);
+  const { publicKey } = await fetch('/api/push/public-key').then((r) => r.json());
+
+  // 브라우저 푸시 서비스(FCM / Apple / Mozilla)에 구독 → endpoint + 키 발급
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true, // 푸시 받으면 반드시 알림을 보여주겠다는 약속 (필수)
+    applicationServerKey: urlBase64ToUint8Array(publicKey),
+  });
+
+  // 서버에 저장
+  await fetch('/api/push/subscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sub.toJSON()),
+  });
+  log('✅ 구독 완료\nendpoint: ' + sub.endpoint.slice(0, 60) + '...');
+};
+
+// ── 4. 테스트 발송 (원래는 서버 이벤트가 트리거) ───────────
+document.getElementById('testBtn').onclick = async () => {
+  const res = await fetch('/api/push/send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title: '새 주문 도착', body: '주문 #1234가 접수됐어요', url: '/' }),
+  }).then((r) => r.json());
+  log(`발송: ${res.sent}/${res.total}건 성공`);
+};
+
+// ── 5. 구독 해제 ──────────────────────────────────────
+document.getElementById('unsubscribeBtn').onclick = async () => {
+  const reg = swReg || (await navigator.serviceWorker.ready);
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return log('구독 중이 아님');
+  await fetch('/api/push/unsubscribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endpoint: sub.endpoint }),
+  });
+  await sub.unsubscribe();
+  log('🔕 구독 해제됨');
+};
+</script>
+</body>
+</html>
